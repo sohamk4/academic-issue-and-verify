@@ -175,8 +175,8 @@ const IssueCertificate = () => {
         {
           headers: {
             "Content-Type": "application/json",
-            pinata_api_key: "edf95dc84bf60d28035e",
-            pinata_secret_api_key: "b4afebb03d45295ad3790df26b73cbe2cc047c4d7754426af251c6dd5abcc4d9",
+            pinata_api_key: "",
+            pinata_secret_api_key: "",
           },
         }
       );

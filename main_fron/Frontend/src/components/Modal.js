@@ -40,8 +40,8 @@ const CertificateEditor = ({ onClose, onSave, studentName }) => {
         {
           headers: {
             "Content-Type": "multipart/form-data",
-            pinata_api_key: "71e6b70521060942b801",
-            pinata_secret_api_key: "a9971a3b6712c5805cb5d55c30b7790979d163b30423f2f38eb268c9965a37c4",
+            pinata_api_key: "",
+            pinata_secret_api_key: "",
           },
         }
       );
