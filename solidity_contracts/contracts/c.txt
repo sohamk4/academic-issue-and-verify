@@ -1,0 +1,281 @@
+0xe0fC3c5557d1289eB6886eecB362C3B17791D257 0xe882503e7ec175903d8eaedc209689cd23b9ab33dbb75736eaecfc5576061082 U2FsdGVkX18OORgEyrfhoqviIm+uLrkbDrpNE6KXhCkOrKsdmt6TXtM2GrUkB6PONuYLPKmqgIOIKbIOid91YGAgRgRyMVJ3XBvDWPn1QDp5AiNIF7mRHmW5FIyyaB24 0x814693fe040caff96ffd4421597e9d2ac41a49cc31f9fbfc7185bbce7316f40d
+0xb41da874BcfB89E7f967Db811d8664c52957aa3e
+
+
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol"; // For cryptographic functions
+
+contract UniversityRegistry is ERC721URIStorage, Ownable {
+    using ECDSA for bytes32; // Helper library for cryptographic functions
+
+    struct Location {
+        string country;
+        string state;
+        string city;
+        string pincode;
+    }
+
+    struct University {
+        address universityAddress;
+        string name;
+        Location location;
+        string studentDomain;
+        bytes32 publicKey;
+    }
+
+    struct Certificate {
+        string studentName;
+        string certificateType;
+        string dateOfIssue;
+        bytes32 studentPublicKey;
+        bytes32 universityPublicKey;
+        bytes signature; // Cryptographic signature
+    }
+
+    struct CertificateInfo {
+        uint256 certificateId;
+        string studentName;
+        string certificateType;
+        string dateOfIssue;
+        bytes32 studentPublicKey;
+        bytes32 universityPublicKey;
+    }
+
+    struct Student {
+        bytes32 studentPublicKey;
+        string name;
+        string username;
+        string password;
+        string collegeName;
+        string collegeId;
+        string course;
+    }
+
+    mapping(address => University) public universities;
+    bytes32[] public universityPublicKeys;
+    uint256 public certificateCounter;
+    mapping(bytes32 => uint256[]) public universityCertificates; // University public key -> certificate IDs
+
+    mapping(uint256 => Certificate) public certificates; // NFT ID -> Certificate
+    mapping(bytes32 => uint256) public universityCertificateCounters; // University public key -> certificate counter
+    mapping(address => Student) public students; // Use publicKey as key
+    mapping(string => bool) public registered;
+    mapping(address => mapping(address => Student)) public universityStudents;
+
+    event StudentRegistered(bytes32 indexed publicKey, string name, string collegeName, string course);
+
+
+    event UniversityRegistered(bytes32 indexed publicKey, address indexed universityAddress, string name);
+    event UniversityDeregistered(bytes32 indexed publicKey, address indexed universityAddress);
+    event CertificateIssued(uint256 indexed certificateId, bytes32 indexed universityPublicKey, bytes32 studentPublicKey);
+
+    constructor() ERC721("UniversityCertificate", "UCERT") {}
+
+    function registerUniversity(
+        address user,
+        string memory _name,
+        string memory _country,
+        string memory _state,
+        string memory _city,
+        string memory _pincode,
+        string memory _studentDomain,
+        bytes32 _publicKey
+    ) public {
+        require(universities[user].universityAddress == address(0), "University already registered");
+        require(bytes(_name).length > 0, "Name cannot be empty");
+        require(bytes(_name).length <= 100, "Name is too long");
+    
+    
+        universities[user] = University({
+            universityAddress: user,
+            name: _name,
+            location: Location(_country, _state, _city, _pincode),
+            studentDomain: _studentDomain,
+            publicKey: _publicKey
+        });
+    
+        universityPublicKeys.push(_publicKey);
+        emit UniversityRegistered(_publicKey, user, _name);
+    }
+
+    function registerStudent(
+        address user,
+        address univadd,
+        bytes32 _publicKey,
+        string memory _name,
+        string memory _username,
+        string memory _password,
+        string memory _collegeName,
+        string memory _collegeId,
+        string memory _course
+    ) public {
+        students[user] = Student(_publicKey,_name, _username, _password, _collegeName, _collegeId, _course);
+        universityStudents[univadd][user] = Student(_publicKey,_name, _username, _password, _collegeName, _collegeId, _course);
+        emit StudentRegistered(_publicKey, _name, _collegeName, _course);
+    }
+
+    function getStudent(address user) public view returns (Student memory) {
+        return students[user];
+    }
+
+    function getStudentuni(address _university, address _student) public view returns (bytes32) {
+ 
+    Student memory student = universityStudents[_university][_student];
+
+    return (student.studentPublicKey);
+    }
+
+    function deregisterUniversity(address user) public onlyOwner {
+        require(universities[user].universityAddress != user, "University not found");    
+        bytes32 publicKeyToRemove = universities[user].publicKey;
+        emit UniversityDeregistered(publicKeyToRemove, user);
+        delete universities[user];
+        uint256 length = universityPublicKeys.length;
+        for (uint256 i = 0; i < length; i++) {
+            if (universityPublicKeys[i] == publicKeyToRemove) {
+                if (i < length - 1) {
+                    universityPublicKeys[i] = universityPublicKeys[length - 1];
+                }
+                universityPublicKeys.pop();
+                break;
+            }
+        }
+    }
+
+    function getUniversityByPublicKey(address user) public view returns (
+        address universityAddress,
+        string memory name,
+        string memory country,
+        string memory state,
+        string memory city,
+        string memory pincode,
+        string memory studentDomain
+    ) {
+        University memory university = universities[user];
+        require(university.universityAddress != user, "University not found");
+
+        return (
+            university.universityAddress,
+            university.name,
+            university.location.country,
+            university.location.state,
+            university.location.city,
+            university.location.pincode,
+            university.studentDomain
+        );
+    }
+
+    function getAllUniversityPublicKeys() public view returns (bytes32[] memory) {
+        return universityPublicKeys;
+    }
+
+    function issueCertificate(
+        address user,
+        address _studentAddress,
+        string memory _studentName,
+        string memory _certificateType,
+        string memory _dateOfIssue,
+        bytes32 _studentPublicKey,
+        bytes32 _universityPublicKey,
+        string memory _tokenURI,
+        bytes memory _signature,
+        bytes32 messageHash
+    ) public returns (uint256) {
+        // require(universities[user].universityAddress == user, "University not found");
+        
+        certificateCounter++;
+        uint256 certificateId = certificateCounter;
+    
+        // Recreate the message hash
+        bytes32 ethHash = messageHash.toEthSignedMessageHash();
+    
+        // Verify the signature 
+        address signer = ethHash.recover(_signature);
+        require(signer == user, "Invalid signature");
+    
+        certificates[certificateId] = Certificate({
+            studentName: _studentName,
+            certificateType: _certificateType,
+            dateOfIssue: _dateOfIssue,
+            studentPublicKey: _studentPublicKey,
+            universityPublicKey: _universityPublicKey,
+            signature: _signature
+        });
+    
+        _safeMint(_studentAddress, certificateId);
+        _setTokenURI(certificateId, _tokenURI);
+
+        universityCertificates[_universityPublicKey].push(certificateId);
+
+        emit CertificateIssued(certificateId, _universityPublicKey, _studentPublicKey);
+        return certificateId;
+    }
+    
+    function verifyCertificate(
+        bytes memory _signature,
+        bytes32 messageHash,
+        uint256 _certificateId,
+        address user
+    ) public view returns (bool) {
+        require(_exists(_certificateId), "Certificate does not exist");
+        bytes32 ethHash = messageHash.toEthSignedMessageHash();
+        address signer = ethHash.recover(_signature);
+        return signer == user;
+    }
+
+    // function revokeCertificate(uint256 _certificateId) public {
+    //     require(_exists(_certificateId), "Certificate does not exist");
+    //     Certificate memory cert = certificates[_certificateId];
+    //     require(universities[cert.universityPublicKey].universityAddress == msg.sender, "Only the issuing university can revoke certificates");
+
+    //     _burn(_certificateId);
+    //     delete certificates[_certificateId];
+    // }
+
+    function getCertificate(uint256 _certificateId) public view returns (
+        string memory studentName,
+        string memory certificateType,
+        string memory dateOfIssue,
+        bytes32 studentPublicKey,
+        bytes32 universityPublicKey,
+        bytes memory signature
+    ) {
+        require(_exists(_certificateId), "Certificate does not exist");
+
+        Certificate memory cert = certificates[_certificateId];
+
+        return (
+            cert.studentName,
+            cert.certificateType,
+            cert.dateOfIssue,
+            cert.studentPublicKey,
+            cert.universityPublicKey,
+            cert.signature
+        );
+    }
+
+    function getCertificatesByUniversity(bytes32 _universityPublicKey) public view returns (CertificateInfo[] memory) {
+        uint256[] memory certificateIds = universityCertificates[_universityPublicKey];
+        CertificateInfo[] memory certificateDetails = new CertificateInfo[](certificateIds.length);
+
+        for (uint256 i = 0; i < certificateIds.length; i++) {
+            uint256 certificateId = certificateIds[i];
+            Certificate memory cert = certificates[certificateId];
+
+            certificateDetails[i] = CertificateInfo({
+                certificateId: certificateId,
+                studentName: cert.studentName,
+                certificateType: cert.certificateType,
+                dateOfIssue: cert.dateOfIssue,
+                studentPublicKey: cert.studentPublicKey,
+                universityPublicKey: cert.universityPublicKey
+            });
+        }
+
+        return certificateDetails;
+    }
+}
